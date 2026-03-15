@@ -1,7 +1,7 @@
 import './style.css'
 import * as THREE from 'three'
 
-// --- 1. AUDIO SETUP ---
+// --- 1. AUDIO ENGINE SETUP ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const analyser = audioCtx.createAnalyser();
 analyser.fftSize = 512;
@@ -21,7 +21,7 @@ const instruments = [
   { name: 'SYNTH', freq: 440, type: 'sawtooth', decay: 0.3 }
 ];
 
-// --- 2. GENERATE UI ---
+// --- 2. MULTI-ROW UI GENERATION ---
 const container = document.getElementById('sequencer-container');
 instruments.forEach((inst) => {
   const row = document.createElement('div');
@@ -39,7 +39,7 @@ instruments.forEach((inst) => {
   container.appendChild(row);
 });
 
-// --- 3. THREE.JS VISUALS ---
+// --- 3. THREE.JS VISUAL WORLD ---
 const canvas = document.querySelector('#visuals');
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -47,13 +47,33 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true 
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
+// --- THE HERO KNOT ---
 const geometry = new THREE.TorusKnotGeometry(12, 4, 150, 20);
 const material = new THREE.MeshBasicMaterial({ color: 0x00f2ff, wireframe: true, transparent: true, opacity: 0.6 });
 const heroShape = new THREE.Mesh(geometry, material);
 scene.add(heroShape);
+
+// --- THE STARFIELD ---
+const starGeometry = new THREE.BufferGeometry();
+const starCount = 2000;
+const posArray = new Float32Array(starCount * 3);
+for(let i = 0; i < starCount * 3; i++) {
+    posArray[i] = (Math.random() - 0.5) * 800; 
+}
+starGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+const starMaterial = new THREE.PointsMaterial({
+    size: 0.8,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending
+});
+const starMesh = new THREE.Points(starGeometry, starMaterial);
+scene.add(starMesh);
+
 camera.position.z = 45;
 
-// --- 4. AUDIO LOGIC ---
+// --- 4. CORE ENGINE FUNCTIONS ---
 function playInstrument(instIdx, time) {
   const inst = instruments[instIdx];
   const osc = audioCtx.createOscillator();
@@ -80,23 +100,53 @@ function scheduleNote(stepIndex, time) {
   });
 }
 
-// --- 5. UI AUTO-HIDE LOGIC ---
+// --- 5. UI AUTO-HIDE ---
 const uiLayer = document.getElementById('ui-layer');
 let hideTimeout;
-
 const hideUI = () => uiLayer.classList.add('hidden');
 const showUI = () => uiLayer.classList.remove('hidden');
 
 function resetHideTimer() {
   showUI();
   clearTimeout(hideTimeout);
-  // Auto-hide after 4 seconds of play or interaction
   if (isPlaying || audioSource) {
     hideTimeout = setTimeout(hideUI, 4000);
   }
 }
 
-// --- 6. EVENT LISTENERS ---
+// --- 6. ANIMATION LOOP (WITH CAMERA SHAKE) ---
+function animate() {
+  requestAnimationFrame(animate);
+  analyser.getByteFrequencyData(dataArray);
+  
+  let bass = 0; 
+  for (let i = 0; i < 15; i++) bass += dataArray[i];
+  const intensity = bass / 15;
+  const scale = 1 + (intensity / 255) * 1.5;
+  
+  // Update Hero Knot
+  heroShape.scale.set(scale, scale, scale);
+  heroShape.rotation.x += 0.005; 
+  heroShape.rotation.y += 0.008;
+
+  // Slowly rotate starfield
+  starMesh.rotation.y += 0.0004;
+
+  // React and Shake Camera
+  if (intensity > 120) {
+    heroShape.material.color.setHex(0xff00ff);
+    camera.position.x = (Math.random() - 0.5) * 0.8;
+    camera.position.y = (Math.random() - 0.5) * 0.8;
+  } else {
+    heroShape.material.color.setHex(0x00f2ff);
+    camera.position.set(0, 0, 45); 
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// --- 7. EVENT LISTENERS ---
 document.getElementById('audio-upload').addEventListener('change', async (e) => {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   const file = e.target.files[0];
@@ -159,19 +209,6 @@ function ticker() {
     requestAnimationFrame(ticker);
   }
 }
-
-function animate() {
-  requestAnimationFrame(animate);
-  analyser.getByteFrequencyData(dataArray);
-  let bass = 0; for (let i = 0; i < 15; i++) bass += dataArray[i];
-  const intensity = bass / 15;
-  const scale = 1 + (intensity / 255) * 1.5;
-  heroShape.scale.set(scale, scale, scale);
-  heroShape.rotation.x += 0.005; heroShape.rotation.y += 0.008;
-  heroShape.material.color.setHex(intensity > 115 ? 0xff00ff : 0x00f2ff);
-  renderer.render(scene, camera);
-}
-animate();
 
 document.getElementById('bpm').addEventListener('input', (e) => {
   tempo = e.target.value;
