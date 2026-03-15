@@ -2,7 +2,7 @@
   --neon-cyan: #00f2ff;
   --neon-magenta: #ff00ff;
   --neon-red: #ff4444;
-  --neon-gold: #ffcc00;
+  --neon-green: #00ffaa;
   --bg-dark: #050505;
 }
 
@@ -33,51 +33,74 @@ body {
   text-align: center;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(12px);
-  padding: 30px;
+  padding: 40px;
   border-radius: 24px;
   border: 1px solid rgba(0, 242, 255, 0.2);
   transition: opacity 0.8s ease, transform 0.8s ease;
 }
 
-/* Hide UI class */
 #ui-layer.hidden {
   opacity: 0;
   pointer-events: none;
   transform: scale(0.95);
 }
 
-h1 { text-transform: uppercase; letter-spacing: 8px; margin-bottom: 20px; font-size: 1.8rem; }
-
-.upload-section { margin-bottom: 20px; }
-#audio-upload { display: none; }
-.custom-file-upload { border: 1px dashed var(--neon-cyan); padding: 8px 20px; cursor: pointer; border-radius: 8px; font-size: 0.8rem; }
-
-.main-buttons { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; }
-
-button { border: none; padding: 10px 20px; border-radius: 50px; cursor: pointer; font-weight: bold; text-transform: uppercase; transition: 0.2s; color: white;}
-#play-pause { background: var(--neon-magenta); }
-.stop-btn { background: var(--neon-red); }
-.rand-btn { background: var(--neon-gold); color: #000; }
-.view-btn { background: rgba(255,255,255,0.1); font-size: 1.2rem; }
-
-#sequencer-container { display: flex; flex-direction: column; gap: 8px; margin-top: 15px; }
-.grid-row { display: flex; gap: 6px; align-items: center; }
-
-.grid-row::before {
-  content: attr(data-name);
-  width: 50px;
-  font-size: 0.6rem;
-  text-align: right;
-  margin-right: 10px;
-  opacity: 0.7;
+h1 {
+  text-transform: uppercase;
+  letter-spacing: 8px;
+  margin-bottom: 30px;
+  font-size: 2rem;
+  text-shadow: 0 0 10px var(--neon-cyan);
 }
 
-.step { width: 30px; height: 50px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer; }
+.upload-section { margin-bottom: 25px; }
+#audio-upload { display: none; }
 
-/* Color coding per row */
-.grid-row[data-name="BASS"] .step.selected { background: var(--neon-cyan); box-shadow: 0 0 10px var(--neon-cyan); }
-.grid-row[data-name="SNARE"] .step.selected { background: var(--neon-magenta); box-shadow: 0 0 10px var(--neon-magenta); }
-.grid-row[data-name="HATS"] .step.selected { background: #ffff00; box-shadow: 0 0 10px #ffff00; }
-.grid-row[data-name="SYNTH"] .step.selected { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
+.custom-file-upload {
+  border: 1px dashed var(--neon-cyan);
+  padding: 12px 30px;
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  transition: 0.3s;
+}
 
-.step.active { border: 2px solid white; transform: translateY(-5px); z-index: 2; }
+.custom-file-upload:hover {
+  background: rgba(0, 242, 255, 0.15);
+  box-shadow: 0 0 15px var(--neon-cyan);
+}
+
+.main-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+button {
+  border: none;
+  padding: 12px 25px;
+  border-radius: 50px;
+  cursor: pointer;
+  font-weight: bold;
+  text-transform: uppercase;
+  transition: 0.2s;
+  color: white;
+}
+
+.shape-btn {
+  background: var(--neon-green);
+  color: #000;
+  box-shadow: 0 0 15px rgba(0, 255, 170, 0.3);
+}
+
+.stop-btn {
+  background: var(--neon-red);
+  box-shadow: 0 0 15px rgba(255, 68, 68, 0.3);
+}
+
+.view-btn {
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 1.2rem;
+}
+
+button:hover { transform: scale(1.05); filter: brightness(1.2); }
