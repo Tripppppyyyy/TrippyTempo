@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrippyTempo | Multi-Track</title>
+</head>
+<body>
+  <div id="ui-layer">
+    <h1>TrippyTempo</h1>
+    
+    <div class="controls">
+      <div class="upload-section">
+        <label for="audio-upload" class="custom-file-upload">🎵 UPLOAD TRACK</label>
+        <input type="file" id="audio-upload" accept="audio/*" />
+      </div>
+
+      <div class="main-buttons">
+        <button id="play-pause">Start</button>
+        <button id="stop-trip" class="stop-btn">Stop</button>
+        <button id="randomize-beat" class="rand-btn">Random</button>
+        <button id="toggle-ui" class="view-btn">👁</button>
+      </div>
+      
+      <div class="bpm-control">
+        <label>BPM: <span id="bpm-value">120</span></label>
+        <input type="range" id="bpm" min="60" max="180" value="120">
+      </div>
+    </div>
+
+    <div id="sequencer-container"></div>
+  </div>
+  
+  <canvas id="visuals"></canvas>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
