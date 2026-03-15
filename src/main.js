@@ -1,72 +1,61 @@
 import './style.css'
 import * as THREE from 'three'
 
-// --- 1. AUDIO ANALYSIS SETUP ---
+// --- 1. AUDIO ANALYSIS ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const analyser = audioCtx.createAnalyser();
 analyser.fftSize = 512;
 const dataArray = new Uint8Array(analyser.frequencyBinCount);
 let audioSource = null;
 
-// --- 2. THREE.JS SCENE SETUP ---
+// --- 2. PALETTE SYSTEM ---
+const palettes = [
+  { main: 0x00f2ff, accent: 0xff00ff }, // Cyan / Magenta
+  { main: 0x00ffaa, accent: 0xffcc00 }, // Seafoam / Gold
+  { main: 0xff4444, accent: 0x00f2ff }, // Red / Cyan
+  { main: 0x7700ff, accent: 0x00ffaa }, // Purple / Green
+];
+let paletteIdx = 0;
+
+// --- 3. THREE.JS SCENE ---
 const canvas = document.querySelector('#visuals');
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-// Geometries for switching
 const knotGeo = new THREE.TorusKnotGeometry(10, 3, 150, 20);
 const crystalGeo = new THREE.IcosahedronGeometry(14, 1);
 let currentShapeType = 0;
 
-const material = new THREE.MeshBasicMaterial({ 
-  color: 0x00f2ff, 
-  wireframe: true, 
-  transparent: true, 
-  opacity: 0.6 
-});
-
+const material = new THREE.MeshBasicMaterial({ color: palettes[0].main, wireframe: true, transparent: true, opacity: 0.6 });
 let heroShape = new THREE.Mesh(knotGeo, material);
 scene.add(heroShape);
 
-// 3. STARFIELD BACKGROUND
-const starGeometry = new THREE.BufferGeometry();
+// Starfield
 const starCount = 3000;
+const starGeometry = new THREE.BufferGeometry();
 const posArray = new Float32Array(starCount * 3);
-for(let i = 0; i < starCount * 3; i++) {
-    posArray[i] = (Math.random() - 0.5) * 800; 
-}
+for(let i = 0; i < starCount * 3; i++) posArray[i] = (Math.random() - 0.5) * 800;
 starGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-const starMaterial = new THREE.PointsMaterial({
-    size: 0.8,
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.7
-});
-const starMesh = new THREE.Points(starGeometry, starMaterial);
+const starMesh = new THREE.Points(starGeometry, new THREE.PointsMaterial({ size: 0.8, color: 0xffffff, transparent: true, opacity: 0.7 }));
 scene.add(starMesh);
 
 camera.position.z = 45;
 
-// --- 4. UI LOGIC ---
+// --- 4. UI ANIMATION LOGIC ---
 const uiLayer = document.getElementById('ui-layer');
 let hideTimeout;
-
 const hideUI = () => uiLayer.classList.add('hidden');
 const showUI = () => uiLayer.classList.remove('hidden');
-
 function resetHideTimer() {
   showUI();
   clearTimeout(hideTimeout);
-  if (audioSource) {
-    hideTimeout = setTimeout(hideUI, 3000);
-  }
+  if (audioSource) hideTimeout = setTimeout(hideUI, 3000);
 }
 
-// --- 5. ANIMATION LOOP ---
+// --- 5. THE ANIMATION LOOP ---
 function animate() {
   requestAnimationFrame(animate);
   analyser.getByteFrequencyData(dataArray);
@@ -75,34 +64,50 @@ function animate() {
   for (let i = 0; i < 15; i++) bass += dataArray[i];
   const intensity = bass / 15;
 
-  // Smooth Scaling (Lerp)
+  // Scaling with Lerp for smoothness
   const targetScale = 1 + (intensity / 255) * 1.2;
   const s = THREE.MathUtils.lerp(heroShape.scale.x, targetScale, 0.15);
   heroShape.scale.set(s, s, s);
 
-  // Rotations
   heroShape.rotation.x += 0.005; 
   heroShape.rotation.y += 0.008;
   starMesh.rotation.y += 0.0004;
 
-  // Bass Reactions
+  const p = palettes[paletteIdx];
   if (intensity > 120) {
-    heroShape.material.color.setHex(0xff00ff);
-    camera.position.x = (Math.random() - 0.5) * 0.4;
-    camera.position.y = (Math.random() - 0.5) * 0.4;
+    heroShape.material.color.setHex(p.accent);
+    camera.position.x = (Math.random() - 0.5) * 0.5;
+    camera.position.y = (Math.random() - 0.5) * 0.5;
   } else {
-    heroShape.material.color.setHex(0x00f2ff);
+    heroShape.material.color.setHex(p.main);
     camera.position.set(0, 0, 45); 
   }
-
   renderer.render(scene, camera);
 }
 animate();
 
 // --- 6. EVENT LISTENERS ---
+
+// Fullscreen
+const fsBtn = document.getElementById('fullscreen-btn');
+fsBtn.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+    fsBtn.innerText = "✖";
+  } else {
+    document.exitFullscreen();
+    fsBtn.innerText = "⛶";
+  }
+});
+
 document.getElementById('change-shape').addEventListener('click', () => {
   currentShapeType = (currentShapeType + 1) % 2;
   heroShape.geometry = currentShapeType === 0 ? knotGeo : crystalGeo;
+  resetHideTimer();
+});
+
+document.getElementById('change-color').addEventListener('click', () => {
+  paletteIdx = (paletteIdx + 1) % palettes.length;
   resetHideTimer();
 });
 
