@@ -11,11 +11,12 @@ let isPlaying = false;
 
 // Physics Config
 const baseScale = 1.0;
-const beatExtreme = 3.2;    // Increased for more "extreme" vortex effect
-const smoothFactor = 0.15;  // Responsiveness of the "bounce"
-const rotationSpeed = 0.012;
+const beatExtreme = 3.8;    // Significant jump for "extreme" feel
+const smoothFactor = 0.12;  // Springy return
+const rotationSpeedIdle = 0.005; // Elegant slow spin
+const rotationSpeedActive = 0.015; // Faster when music plays
 
-// --- 2. AUTHENTICATION HANDSHAKE ---
+// --- 2. AUTHENTICATION ---
 async function handleAuth() {
   const urlParams = new URLSearchParams(window.location.search);
   const code = urlParams.get('code');
@@ -39,18 +40,19 @@ window.onSpotifyWebPlaybackSDKReady = () => {
   });
 
   player.addListener('ready', ({ device_id }) => {
-    console.log('Vortex Ready!');
-    document.getElementById('spotify-login').innerText = "VORTEX ACTIVE";
+    document.getElementById('spotify-login').innerText = "VORTEX SYNCED";
   });
 
   player.addListener('player_state_changed', state => {
-    if (!state) return;
+    if (!state) {
+      isPlaying = false;
+      return;
+    }
     currentPosition = state.position / 1000;
     lastUpdate = Date.now();
     isPlaying = !state.paused;
     
-    const trackId = state.track_window.current_track.id;
-    fetchBeatData(trackId);
+    fetchBeatData(state.track_window.current_track.id);
   });
 
   player.connect();
@@ -63,41 +65,29 @@ async function fetchBeatData(trackId) {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await res.json();
-    songBeats = data.beats || [];
+    // Filter for "stronger" beats to avoid the "random jitter" feel
+    songBeats = data.beats.filter(b => b.confidence > 0.1) || [];
   } catch (e) { console.error("Sync Error", e); }
 }
 
 // --- 4. THREE.JS WORLD ---
+const canvas = document.querySelector('#visuals');
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('#visuals'), antialias: true, alpha: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-// Geometries
 const knotGeo = new THREE.TorusKnotGeometry(10, 3, 150, 20);
 const crystalGeo = new THREE.IcosahedronGeometry(14, 1);
-const palettes = [
-    { main: 0x00f2ff, accent: 0xff00ff }, 
-    { main: 0x00ffaa, accent: 0xffcc00 }, 
-    { main: 0xff4444, accent: 0x00f2ff }
-];
+const palettes = [{ main: 0x00f2ff, accent: 0xff00ff }, { main: 0x00ffaa, accent: 0xffcc00 }];
 let paletteIdx = 0;
 
 const material = new THREE.MeshBasicMaterial({ color: palettes[0].main, wireframe: true, transparent: true, opacity: 0.6 });
 let heroShape = new THREE.Mesh(knotGeo, material);
 scene.add(heroShape);
-
-// Starfield
-const starGeometry = new THREE.BufferGeometry();
-const posArray = new Float32Array(3000 * 3);
-for(let i = 0; i < 3000 * 3; i++) posArray[i] = (Math.random() - 0.5) * 800;
-starGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-const starMesh = new THREE.Points(starGeometry, new THREE.PointsMaterial({ size: 0.7, color: 0xffffff }));
-scene.add(starMesh);
-
 camera.position.z = 45;
 
-// --- 5. ANIMATION LOOP (Vortex Engine) ---
+// --- 5. ANIMATION LOOP ---
 function animate() {
   requestAnimationFrame(animate);
 
@@ -108,66 +98,67 @@ function animate() {
   }
 
   let intensity = 0;
-  // Look for beats with a tight window
-  const beat = songBeats.find(b => Math.abs(b.start - currentPosition) < 0.08);
   
-  if (beat) {
-    intensity = 1.0; 
-  } else {
-    // Breathing idle animation
-    intensity = Math.sin(Date.now() * 0.005) * 0.05;
+  // SYNC LOGIC: Only trigger on actual data
+  if (isPlaying && songBeats.length > 0) {
+    const beat = songBeats.find(b => Math.abs(b.start - currentPosition) < 0.06);
+    if (beat) intensity = 1.0;
   }
 
-  // ENLARGING LOGIC (Extreme Scale)
+  // Vortex Scaling
   const targetScale = baseScale + (intensity * (beatExtreme - baseScale));
-  const s = THREE.MathUtils.lerp(heroShape.scale.x, targetScale, smoothFactor);
-  heroShape.scale.set(s, s, s);
+  heroShape.scale.x = THREE.MathUtils.lerp(heroShape.scale.x, targetScale, smoothFactor);
+  heroShape.scale.y = THREE.MathUtils.lerp(heroShape.scale.y, targetScale, smoothFactor);
+  heroShape.scale.z = THREE.MathUtils.lerp(heroShape.scale.z, targetScale, smoothFactor);
 
-  // VORTEX ROTATION
-  heroShape.rotation.x += rotationSpeed;
-  heroShape.rotation.y += rotationSpeed * 1.5;
-  starMesh.rotation.y += 0.0005;
+  // Rotation Speed Adjustment
+  const rSpeed = isPlaying ? rotationSpeedActive : rotationSpeedIdle;
+  heroShape.rotation.x += rSpeed;
+  heroShape.rotation.y += rSpeed * 1.5;
 
-  // COLOR & CAMERA SHAKE
+  // Colors
   const p = palettes[paletteIdx];
-  if (beat) {
-    heroShape.material.color.setHex(p.accent);
-    camera.position.x = (Math.random() - 0.5) * 1.2; // Intense shake
-    camera.position.y = (Math.random() - 0.5) * 1.2;
-  } else {
-    heroShape.material.color.setHex(p.main);
-    camera.position.set(0, 0, 45);
-  }
+  heroShape.material.color.setHex(intensity > 0.5 ? p.accent : p.main);
 
   renderer.render(scene, camera);
 }
 
-// --- 6. UI & TOGGLES ---
+// --- 6. GHOST UI LOGIC (Mouse Tracking) ---
 handleAuth();
 animate();
 
-document.getElementById('spotify-login').onclick = () => { if(!token) redirectToSpotify(); };
+let idleTimer;
+const uiLayer = document.getElementById('ui-layer');
 
+function showUI() {
+  uiLayer.style.opacity = '1';
+  uiLayer.style.pointerEvents = 'auto';
+  document.body.style.cursor = 'default';
+  
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    uiLayer.style.opacity = '0';
+    uiLayer.style.pointerEvents = 'none';
+    document.body.style.cursor = 'none'; // Hide cursor too for full immersion
+  }, 3000);
+}
+
+// Listen for any mouse activity
+window.addEventListener('mousemove', showUI);
+window.addEventListener('mousedown', showUI);
+window.addEventListener('keydown', showUI);
+
+// Button Listeners
+document.getElementById('spotify-login').onclick = () => { if(!token) redirectToSpotify(); };
 document.getElementById('change-shape').onclick = () => {
   heroShape.geometry = heroShape.geometry === knotGeo ? crystalGeo : knotGeo;
 };
-
 document.getElementById('change-color').onclick = () => {
   paletteIdx = (paletteIdx + 1) % palettes.length;
 };
-
 document.getElementById('fullscreen-btn').onclick = () => {
   if (!document.fullscreenElement) document.documentElement.requestFullscreen();
   else document.exitFullscreen();
-};
-
-// FULL UI FADE (Removes Black Box + Buttons)
-let uiVisible = true;
-document.getElementById('toggle-ui').onclick = () => {
-  uiVisible = !uiVisible;
-  const uiLayer = document.getElementById('ui-layer');
-  uiLayer.style.opacity = uiVisible ? '1' : '0';
-  uiLayer.style.pointerEvents = uiVisible ? 'auto' : 'none';
 };
 
 window.addEventListener('resize', () => {
