@@ -2,20 +2,20 @@ import './style.css'
 import * as THREE from 'three'
 import { redirectToSpotify, fetchToken } from './spotify.js'
 
-// --- 1. STATE & TUNING ---
+// --- 1. STATE & VORTEX TUNING ---
 let token = localStorage.getItem('access_token');
 let songBeats = [];
 let currentPosition = 0;
 let lastUpdate = Date.now();
 let isPlaying = false;
 
-// Tuning Variables (Change these to make it more/less extreme)
+// Physics Config
 const baseScale = 1.0;
-const beatExtreme = 2.8; // How big it gets on a beat
-const smoothFactor = 0.12; // Lower = more "springy", Higher = snappier
-const rotationSpeed = 0.01;
+const beatExtreme = 3.2;    // Increased for more "extreme" vortex effect
+const smoothFactor = 0.15;  // Responsiveness of the "bounce"
+const rotationSpeed = 0.012;
 
-// --- 2. AUTHENTICATION ---
+// --- 2. AUTHENTICATION HANDSHAKE ---
 async function handleAuth() {
   const urlParams = new URLSearchParams(window.location.search);
   const code = urlParams.get('code');
@@ -29,7 +29,7 @@ async function handleAuth() {
   }
 }
 
-// --- 3. SPOTIFY PLAYER ---
+// --- 3. SPOTIFY PLAYER SETUP ---
 window.onSpotifyWebPlaybackSDKReady = () => {
   if (!token) return;
   const player = new Spotify.Player({
@@ -39,7 +39,8 @@ window.onSpotifyWebPlaybackSDKReady = () => {
   });
 
   player.addListener('ready', ({ device_id }) => {
-    document.getElementById('spotify-login').innerText = "VORTEX READY";
+    console.log('Vortex Ready!');
+    document.getElementById('spotify-login').innerText = "VORTEX ACTIVE";
   });
 
   player.addListener('player_state_changed', state => {
@@ -47,7 +48,9 @@ window.onSpotifyWebPlaybackSDKReady = () => {
     currentPosition = state.position / 1000;
     lastUpdate = Date.now();
     isPlaying = !state.paused;
-    fetchBeatData(state.track_window.current_track.id);
+    
+    const trackId = state.track_window.current_track.id;
+    fetchBeatData(trackId);
   });
 
   player.connect();
@@ -64,7 +67,7 @@ async function fetchBeatData(trackId) {
   } catch (e) { console.error("Sync Error", e); }
 }
 
-// --- 4. THREE.JS SCENE ---
+// --- 4. THREE.JS WORLD ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('#visuals'), antialias: true, alpha: true });
@@ -73,7 +76,11 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 // Geometries
 const knotGeo = new THREE.TorusKnotGeometry(10, 3, 150, 20);
 const crystalGeo = new THREE.IcosahedronGeometry(14, 1);
-const palettes = [{ main: 0x00f2ff, accent: 0xff00ff }, { main: 0x00ffaa, accent: 0xffcc00 }, { main: 0xff4444, accent: 0x00f2ff }];
+const palettes = [
+    { main: 0x00f2ff, accent: 0xff00ff }, 
+    { main: 0x00ffaa, accent: 0xffcc00 }, 
+    { main: 0xff4444, accent: 0x00f2ff }
+];
 let paletteIdx = 0;
 
 const material = new THREE.MeshBasicMaterial({ color: palettes[0].main, wireframe: true, transparent: true, opacity: 0.6 });
@@ -90,7 +97,7 @@ scene.add(starMesh);
 
 camera.position.z = 45;
 
-// --- 5. THE ANIMATION LOOP (Fixed Vortex Logic) ---
+// --- 5. ANIMATION LOOP (Vortex Engine) ---
 function animate() {
   requestAnimationFrame(animate);
 
@@ -101,33 +108,32 @@ function animate() {
   }
 
   let intensity = 0;
-  // Precision beat detection
+  // Look for beats with a tight window
   const beat = songBeats.find(b => Math.abs(b.start - currentPosition) < 0.08);
   
   if (beat) {
-    intensity = 1.0; // Max trigger
+    intensity = 1.0; 
   } else {
-    // Subtle idle breathing
-    intensity = Math.sin(Date.now() * 0.005) * 0.1;
+    // Breathing idle animation
+    intensity = Math.sin(Date.now() * 0.005) * 0.05;
   }
 
-  // ENLARGING LOGIC: Lerp toward extreme scale on beat, back to base scale otherwise
+  // ENLARGING LOGIC (Extreme Scale)
   const targetScale = baseScale + (intensity * (beatExtreme - baseScale));
-  heroShape.scale.x = THREE.MathUtils.lerp(heroShape.scale.x, targetScale, smoothFactor);
-  heroShape.scale.y = THREE.MathUtils.lerp(heroShape.scale.y, targetScale, smoothFactor);
-  heroShape.scale.z = THREE.MathUtils.lerp(heroShape.scale.z, targetScale, smoothFactor);
+  const s = THREE.MathUtils.lerp(heroShape.scale.x, targetScale, smoothFactor);
+  heroShape.scale.set(s, s, s);
 
   // VORTEX ROTATION
   heroShape.rotation.x += rotationSpeed;
   heroShape.rotation.y += rotationSpeed * 1.5;
   starMesh.rotation.y += 0.0005;
 
-  // COLOR & SHAKE
+  // COLOR & CAMERA SHAKE
   const p = palettes[paletteIdx];
   if (beat) {
     heroShape.material.color.setHex(p.accent);
-    camera.position.x = (Math.random() - 0.5) * 0.8; // Violent shake
-    camera.position.y = (Math.random() - 0.5) * 0.8;
+    camera.position.x = (Math.random() - 0.5) * 1.2; // Intense shake
+    camera.position.y = (Math.random() - 0.5) * 1.2;
   } else {
     heroShape.material.color.setHex(p.main);
     camera.position.set(0, 0, 45);
@@ -136,7 +142,7 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// --- 6. UI LISTENERS (Restored) ---
+// --- 6. UI & TOGGLES ---
 handleAuth();
 animate();
 
@@ -155,14 +161,13 @@ document.getElementById('fullscreen-btn').onclick = () => {
   else document.exitFullscreen();
 };
 
+// FULL UI FADE (Removes Black Box + Buttons)
 let uiVisible = true;
 document.getElementById('toggle-ui').onclick = () => {
   uiVisible = !uiVisible;
-  const ui = document.querySelector('.controls');
-  const title = document.querySelector('h1');
-  ui.style.opacity = uiVisible ? '1' : '0';
-  title.style.opacity = uiVisible ? '1' : '0';
-  ui.style.pointerEvents = uiVisible ? 'auto' : 'none';
+  const uiLayer = document.getElementById('ui-layer');
+  uiLayer.style.opacity = uiVisible ? '1' : '0';
+  uiLayer.style.pointerEvents = uiVisible ? 'auto' : 'none';
 };
 
 window.addEventListener('resize', () => {
