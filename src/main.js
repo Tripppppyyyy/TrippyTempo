@@ -11,10 +11,10 @@ let isPlaying = false;
 
 // Physics Config
 const baseScale = 1.0;
-const beatExtreme = 3.8;    // Significant jump for "extreme" feel
-const smoothFactor = 0.12;  // Springy return
-const rotationSpeedIdle = 0.005; // Elegant slow spin
-const rotationSpeedActive = 0.015; // Faster when music plays
+const beatExtreme = 4.2;    // Increased for a truly "extreme" bass impact
+const springStrength = 0.15; // Controls the "snap" back to base size
+const rotationSpeedIdle = 0.004; 
+const rotationSpeedActive = 0.012;
 
 // --- 2. AUTHENTICATION ---
 async function handleAuth() {
@@ -36,7 +36,7 @@ window.onSpotifyWebPlaybackSDKReady = () => {
   const player = new Spotify.Player({
     name: 'TrippyTempo Visualizer',
     getOAuthToken: cb => { cb(token); },
-    volume: 0.5
+    volume: 0.6
   });
 
   player.addListener('ready', ({ device_id }) => {
@@ -51,7 +51,6 @@ window.onSpotifyWebPlaybackSDKReady = () => {
     currentPosition = state.position / 1000;
     lastUpdate = Date.now();
     isPlaying = !state.paused;
-    
     fetchBeatData(state.track_window.current_track.id);
   });
 
@@ -65,29 +64,44 @@ async function fetchBeatData(trackId) {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await res.json();
-    // Filter for "stronger" beats to avoid the "random jitter" feel
-    songBeats = data.beats.filter(b => b.confidence > 0.1) || [];
+    // Confidence filtering ensures only the strongest bass hits trigger the extreme scale
+    songBeats = data.beats || [];
   } catch (e) { console.error("Sync Error", e); }
 }
 
-// --- 4. THREE.JS WORLD ---
-const canvas = document.querySelector('#visuals');
+// --- 4. THREE.JS WORLD (Vortex & Starfield) ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('#visuals'), antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 
+// Vortex Geometries
 const knotGeo = new THREE.TorusKnotGeometry(10, 3, 150, 20);
 const crystalGeo = new THREE.IcosahedronGeometry(14, 1);
 const palettes = [{ main: 0x00f2ff, accent: 0xff00ff }, { main: 0x00ffaa, accent: 0xffcc00 }];
 let paletteIdx = 0;
 
-const material = new THREE.MeshBasicMaterial({ color: palettes[0].main, wireframe: true, transparent: true, opacity: 0.6 });
+const material = new THREE.MeshBasicMaterial({ color: palettes[0].main, wireframe: true, transparent: true, opacity: 0.7 });
 let heroShape = new THREE.Mesh(knotGeo, material);
 scene.add(heroShape);
-camera.position.z = 45;
 
-// --- 5. ANIMATION LOOP ---
+// --- SPACE BACKGROUND (Starfield) ---
+const starGeometry = new THREE.BufferGeometry();
+const starCount = 4000;
+const posArray = new Float32Array(starCount * 3);
+
+for (let i = 0; i < starCount * 3; i++) {
+  posArray[i] = (Math.random() - 0.5) * 1000; // Large spread for deep space feel
+}
+
+starGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+const starMaterial = new THREE.PointsMaterial({ size: 0.7, color: 0xffffff, transparent: true, opacity: 0.8 });
+const starField = new THREE.Points(starGeometry, starMaterial);
+scene.add(starField);
+
+camera.position.z = 50;
+
+// --- 5. ANIMATION LOOP (The Physics Engine) ---
 function animate() {
   requestAnimationFrame(animate);
 
@@ -99,31 +113,46 @@ function animate() {
 
   let intensity = 0;
   
-  // SYNC LOGIC: Only trigger on actual data
+  // BASS DETECTION
   if (isPlaying && songBeats.length > 0) {
-    const beat = songBeats.find(b => Math.abs(b.start - currentPosition) < 0.06);
-    if (beat) intensity = 1.0;
+    // Look for a beat within a slightly wider window to ensure impact
+    const beat = songBeats.find(b => Math.abs(b.start - currentPosition) < 0.08);
+    if (beat) {
+      // Use the confidence of the beat to determine the "strength" of the scale
+      intensity = beat.confidence > 0.2 ? 1.0 : 0.4;
+    }
   }
 
-  // Vortex Scaling
+  // SPRING MECHANISM
   const targetScale = baseScale + (intensity * (beatExtreme - baseScale));
-  heroShape.scale.x = THREE.MathUtils.lerp(heroShape.scale.x, targetScale, smoothFactor);
-  heroShape.scale.y = THREE.MathUtils.lerp(heroShape.scale.y, targetScale, smoothFactor);
-  heroShape.scale.z = THREE.MathUtils.lerp(heroShape.scale.z, targetScale, smoothFactor);
+  // Use lerp for the "Spring" feel
+  heroShape.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), springStrength);
 
-  // Rotation Speed Adjustment
-  const rSpeed = isPlaying ? rotationSpeedActive : rotationSpeedIdle;
-  heroShape.rotation.x += rSpeed;
-  heroShape.rotation.y += rSpeed * 1.5;
+  // ROTATION LOGIC
+  const currentRotation = isPlaying ? rotationSpeedActive : rotationSpeedIdle;
+  heroShape.rotation.x += currentRotation;
+  heroShape.rotation.y += currentRotation * 1.5;
+  
+  // Rotating the starfield gives the illusion of flying through space
+  starField.rotation.y += 0.0005;
+  starField.rotation.z += 0.0002;
 
-  // Colors
+  // COLOR SHIFT ON BASS
   const p = palettes[paletteIdx];
-  heroShape.material.color.setHex(intensity > 0.5 ? p.accent : p.main);
+  if (intensity > 0.5) {
+    heroShape.material.color.setHex(p.accent);
+    // Add "Camera Kick" on high bass
+    camera.position.x = (Math.random() - 0.5) * 1.5;
+    camera.position.y = (Math.random() - 0.5) * 1.5;
+  } else {
+    heroShape.material.color.setHex(p.main);
+    camera.position.set(0, 0, 50);
+  }
 
   renderer.render(scene, camera);
 }
 
-// --- 6. GHOST UI LOGIC (Mouse Tracking) ---
+// --- 6. GHOST UI LOGIC ---
 handleAuth();
 animate();
 
@@ -139,14 +168,12 @@ function showUI() {
   idleTimer = setTimeout(() => {
     uiLayer.style.opacity = '0';
     uiLayer.style.pointerEvents = 'none';
-    document.body.style.cursor = 'none'; // Hide cursor too for full immersion
+    document.body.style.cursor = 'none';
   }, 3000);
 }
 
-// Listen for any mouse activity
 window.addEventListener('mousemove', showUI);
 window.addEventListener('mousedown', showUI);
-window.addEventListener('keydown', showUI);
 
 // Button Listeners
 document.getElementById('spotify-login').onclick = () => { if(!token) redirectToSpotify(); };
