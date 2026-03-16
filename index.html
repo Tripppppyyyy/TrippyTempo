@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TrippyTempo | Master Edition</title>
+  <title>TrippyTempo | Spotify Edition</title>
+  <script src="https://sdk.scdn.co/spotify-player.js"></script>
 </head>
 <body>
   <div id="ui-layer">
@@ -11,11 +12,12 @@
     
     <div class="controls">
       <div class="upload-section">
-        <label for="audio-upload" class="custom-file-upload">🎵 UPLOAD & CHILL</label>
+        <label for="audio-upload" class="custom-file-upload">🎵 UPLOAD TRACK & CHILL</label>
         <input type="file" id="audio-upload" accept="audio/*" />
       </div>
 
       <div class="main-buttons">
+        <button id="spotify-login" class="color-btn">Connect Spotify</button>
         <button id="change-shape" class="shape-btn">Shape</button>
         <button id="change-color" class="color-btn">Palette</button>
         <button id="fullscreen-btn" class="fs-btn">⛶</button>
@@ -26,6 +28,7 @@
   </div>
   
   <canvas id="visuals"></canvas>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

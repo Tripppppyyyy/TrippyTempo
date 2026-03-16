@@ -1,23 +1,22 @@
 import './style.css'
 import * as THREE from 'three'
+import { loginUrl, getTokenFromUrl } from './spotify.js'
 
-// --- 1. AUDIO ANALYSIS ---
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-const analyser = audioCtx.createAnalyser();
-analyser.fftSize = 512;
-const dataArray = new Uint8Array(analyser.frequencyBinCount);
-let audioSource = null;
+// --- 1. SPOTIFY CONFIG ---
+const token = getTokenFromUrl().access_token;
+let spotifyPlayer;
+let songBeats = [];
+let currentPosition = 0;
 
-// --- 2. PALETTE SYSTEM ---
-const palettes = [
-  { main: 0x00f2ff, accent: 0xff00ff }, // Cyan / Magenta
-  { main: 0x00ffaa, accent: 0xffcc00 }, // Seafoam / Gold
-  { main: 0xff4444, accent: 0x00f2ff }, // Red / Cyan
-  { main: 0x7700ff, accent: 0x00ffaa }, // Purple / Green
-];
-let paletteIdx = 0;
+// Redirect to login if no token is found
+if (!token) {
+  document.getElementById('spotify-login').style.display = 'block';
+} else {
+  document.getElementById('spotify-login').style.display = 'none';
+  window.history.pushState({}, null, "/"); // Clean the URL
+}
 
-// --- 3. THREE.JS SCENE ---
+// --- 2. THREE.JS WORLD SETUP ---
 const canvas = document.querySelector('#visuals');
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -29,44 +28,69 @@ const knotGeo = new THREE.TorusKnotGeometry(10, 3, 150, 20);
 const crystalGeo = new THREE.IcosahedronGeometry(14, 1);
 let currentShapeType = 0;
 
+const palettes = [
+  { main: 0x00f2ff, accent: 0xff00ff },
+  { main: 0x00ffaa, accent: 0xffcc00 },
+  { main: 0xff4444, accent: 0x00f2ff },
+  { main: 0x7700ff, accent: 0x00ffaa }
+];
+let paletteIdx = 0;
+
 const material = new THREE.MeshBasicMaterial({ color: palettes[0].main, wireframe: true, transparent: true, opacity: 0.6 });
 let heroShape = new THREE.Mesh(knotGeo, material);
 scene.add(heroShape);
 
-// Starfield
-const starCount = 3000;
-const starGeometry = new THREE.BufferGeometry();
-const posArray = new Float32Array(starCount * 3);
-for(let i = 0; i < starCount * 3; i++) posArray[i] = (Math.random() - 0.5) * 800;
-starGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-const starMesh = new THREE.Points(starGeometry, new THREE.PointsMaterial({ size: 0.8, color: 0xffffff, transparent: true, opacity: 0.7 }));
+const starMesh = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 0.8, color: 0xffffff, transparent: true, opacity: 0.7 }));
+const posArray = new Float32Array(3000 * 3);
+for(let i = 0; i < 3000 * 3; i++) posArray[i] = (Math.random() - 0.5) * 800;
+starMesh.geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
 scene.add(starMesh);
 
 camera.position.z = 45;
 
-// --- 4. UI ANIMATION LOGIC ---
-const uiLayer = document.getElementById('ui-layer');
-let hideTimeout;
-const hideUI = () => uiLayer.classList.add('hidden');
-const showUI = () => uiLayer.classList.remove('hidden');
-function resetHideTimer() {
-  showUI();
-  clearTimeout(hideTimeout);
-  if (audioSource) hideTimeout = setTimeout(hideUI, 3000);
+// --- 3. SPOTIFY BEAT SYNC LOGIC ---
+async function fetchBeatData(trackId) {
+  const res = await fetch(`https://developer.spotify.com/dashboard7`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const data = await res.json();
+  songBeats = data.beats; // This is our "Beat Map"
 }
 
-// --- 5. THE ANIMATION LOOP ---
+// --- 4. INITIALIZE SPOTIFY PLAYER ---
+window.onSpotifyWebPlaybackSDKReady = () => {
+  spotifyPlayer = new Spotify.Player({
+    name: 'TrippyTempo Visualizer',
+    getOAuthToken: cb => { cb(token); },
+    volume: 0.5
+  });
+
+  spotifyPlayer.addListener('ready', ({ device_id }) => {
+    console.log('Ready with Device ID', device_id);
+  });
+
+  spotifyPlayer.addListener('player_state_changed', state => {
+    if (!state) return;
+    currentPosition = state.position / 1000; // Convert to seconds
+    const trackId = state.track_window.current_track.id;
+    fetchBeatData(trackId);
+  });
+
+  spotifyPlayer.connect();
+};
+
+// --- 5. ANIMATION LOOP ---
 function animate() {
   requestAnimationFrame(animate);
-  analyser.getByteFrequencyData(dataArray);
-  
-  let bass = 0; 
-  for (let i = 0; i < 15; i++) bass += dataArray[i];
-  const intensity = bass / 15;
 
-  // Scaling with Lerp for smoothness
+  // Determine "Intensity" based on if current time matches a beat start
+  let intensity = 0;
+  const currentBeat = songBeats.find(b => Math.abs(b.start - currentPosition) < 0.1);
+  if (currentBeat) intensity = 200; // Fake "Bass" hit on beat
+
+  // Smooth Scaling
   const targetScale = 1 + (intensity / 255) * 1.2;
-  const s = THREE.MathUtils.lerp(heroShape.scale.x, targetScale, 0.15);
+  const s = THREE.MathUtils.lerp(heroShape.scale.x, targetScale, 0.1);
   heroShape.scale.set(s, s, s);
 
   heroShape.rotation.x += 0.005; 
@@ -74,72 +98,30 @@ function animate() {
   starMesh.rotation.y += 0.0004;
 
   const p = palettes[paletteIdx];
-  if (intensity > 120) {
+  if (intensity > 150) {
     heroShape.material.color.setHex(p.accent);
     camera.position.x = (Math.random() - 0.5) * 0.5;
     camera.position.y = (Math.random() - 0.5) * 0.5;
   } else {
     heroShape.material.color.setHex(p.main);
-    camera.position.set(0, 0, 45); 
+    camera.position.set(0, 0, 45);
+    currentPosition += 0.016; // Guess progress between Spotify updates (~60fps)
   }
+
   renderer.render(scene, camera);
 }
 animate();
 
-// --- 6. EVENT LISTENERS ---
-
-// Fullscreen
-const fsBtn = document.getElementById('fullscreen-btn');
-fsBtn.addEventListener('click', () => {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen();
-    fsBtn.innerText = "✖";
-  } else {
-    document.exitFullscreen();
-    fsBtn.innerText = "⛶";
-  }
-});
-
-document.getElementById('change-shape').addEventListener('click', () => {
+// --- 6. UI LISTENERS ---
+document.getElementById('spotify-login').onclick = () => window.location.href = loginUrl;
+document.getElementById('change-shape').onclick = () => {
   currentShapeType = (currentShapeType + 1) % 2;
   heroShape.geometry = currentShapeType === 0 ? knotGeo : crystalGeo;
-  resetHideTimer();
-});
-
-document.getElementById('change-color').addEventListener('click', () => {
+};
+document.getElementById('change-color').onclick = () => {
   paletteIdx = (paletteIdx + 1) % palettes.length;
-  resetHideTimer();
-});
-
-document.getElementById('audio-upload').addEventListener('change', async (e) => {
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  const file = e.target.files[0];
-  if (file) {
-    const buffer = await file.arrayBuffer();
-    const audioBuffer = await audioCtx.decodeAudioData(buffer);
-    if (audioSource) audioSource.stop();
-    audioSource = audioCtx.createBufferSource();
-    audioSource.buffer = audioBuffer;
-    audioSource.connect(analyser);
-    analyser.connect(audioCtx.destination);
-    hideUI();
-    audioSource.start();
-    audioSource.onended = () => { showUI(); audioSource = null; };
-  }
-});
-
-document.getElementById('stop-trip').addEventListener('click', () => {
-  if (audioSource) { audioSource.stop(); audioSource = null; }
-  showUI();
-});
-
-document.getElementById('toggle-ui').addEventListener('click', () => {
-  uiLayer.classList.contains('hidden') ? showUI() : hideUI();
-});
-
-window.addEventListener('mousemove', resetHideTimer);
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+};
+document.getElementById('fullscreen-btn').onclick = () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+  else document.exitFullscreen();
+};
