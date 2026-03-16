@@ -10,7 +10,6 @@ const scopes = [
   'user-read-currently-playing'
 ];
 
-// PKCE Cryptography Helpers
 const generateRandomString = (length) => {
   const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   const values = crypto.getRandomValues(new Uint8Array(length));
@@ -32,9 +31,7 @@ export const redirectToSpotify = async () => {
   const codeVerifier = generateRandomString(64);
   const hashed = await sha256(codeVerifier);
   const codeChallenge = base64encode(hashed);
-
   window.localStorage.setItem('code_verifier', codeVerifier);
-
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
@@ -43,7 +40,6 @@ export const redirectToSpotify = async () => {
     code_challenge: codeChallenge,
     redirect_uri: redirectUri,
   });
-
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 

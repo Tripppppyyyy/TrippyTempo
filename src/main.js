@@ -2,9 +2,13 @@ import './style.css'
 import * as THREE from 'three'
 import { redirectToSpotify, fetchToken } from './spotify.js'
 
-// --- 1. AUTHENTICATION HANDSHAKE ---
+// --- 1. GLOBAL STATE ---
 let token = localStorage.getItem('access_token');
+let songBeats = [];
+let currentPosition = 0;
+let isSpotifyReady = false;
 
+// --- 2. AUTHENTICATION HANDSHAKE ---
 async function handleAuth() {
   const urlParams = new URLSearchParams(window.location.search);
   const code = urlParams.get('code');
@@ -15,14 +19,65 @@ async function handleAuth() {
       token = data.access_token;
       localStorage.setItem('access_token', token);
       window.history.pushState({}, null, "/"); 
-      initSpotifyPlayer(); // Start player after getting token
+      location.reload(); // Hard reload to initialize Player with fresh token
     }
-  } else if (token) {
-    initSpotifyPlayer();
   }
 }
 
-// --- 2. THREE.JS WORLD ---
+// --- 3. SPOTIFY PLAYER INITIALIZATION (Top Level) ---
+window.onSpotifyWebPlaybackSDKReady = () => {
+  if (!token) {
+    console.log("No token found. Please connect Spotify first.");
+    return;
+  }
+
+  const player = new Spotify.Player({
+    name: 'TrippyTempo Visualizer',
+    getOAuthToken: cb => { cb(token); },
+    volume: 0.5
+  });
+
+  // Connection Status UI Updates
+  player.addListener('ready', ({ device_id }) => {
+    console.log('Ready with Device ID:', device_id);
+    isSpotifyReady = true;
+    const btn = document.getElementById('spotify-login');
+    if(btn) btn.innerText = "TRI-PY READY";
+  });
+
+  player.addListener('not_ready', ({ device_id }) => {
+    console.log('Device ID has gone offline:', device_id);
+  });
+
+  player.addListener('player_state_changed', state => {
+    if (!state) return;
+    currentPosition = state.position / 1000;
+    const trackId = state.track_window.current_track.id;
+    fetchBeatData(trackId);
+  });
+
+  // Error Handling
+  player.addListener('initialization_error', ({ message }) => { console.error("Init Error:", message); });
+  player.addListener('authentication_error', ({ message }) => { 
+    console.error("Auth Error:", message);
+    localStorage.removeItem('access_token'); // Token likely expired
+  });
+
+  player.connect();
+};
+
+// --- 4. BEAT DATA FETCH ---
+async function fetchBeatData(trackId) {
+  try {
+    const res = await fetch(`https://api.spotify.com/v1/audio-analysis/${trackId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    songBeats = data.beats || [];
+  } catch (e) { console.error("Beat fetch failed", e); }
+}
+
+// --- 5. THREE.JS VISUALS ---
 const canvas = document.querySelector('#visuals');
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -48,47 +103,13 @@ const starMesh = new THREE.Points(starGeometry, new THREE.PointsMaterial({ size:
 scene.add(starMesh);
 camera.position.z = 45;
 
-// --- 3. SPOTIFY SYNC ---
-let songBeats = [];
-let currentPosition = 0;
-
-async function fetchBeatData(trackId) {
-  try {
-    const res = await fetch(`https://api.spotify.com/v1/audio-analysis/${trackId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    songBeats = data.beats || [];
-  } catch (e) { console.error("Beat fetch failed", e); }
-}
-
-function initSpotifyPlayer() {
-  window.onSpotifyWebPlaybackSDKReady = () => {
-    const player = new Spotify.Player({
-      name: 'TrippyTempo Visualizer',
-      getOAuthToken: cb => { cb(token); },
-      volume: 0.5
-    });
-
-    player.addListener('player_state_changed', state => {
-      if (!state) return;
-      currentPosition = state.position / 1000;
-      const trackId = state.track_window.current_track.id;
-      fetchBeatData(trackId);
-    });
-
-    player.connect();
-    document.getElementById('spotify-login').innerText = "Spotify Connected";
-  };
-}
-
-// --- 4. ANIMATION LOOP ---
+// --- 6. ANIMATION LOOP ---
 function animate() {
   requestAnimationFrame(animate);
   let intensity = 0;
-  const margin = 0.05; 
-  const currentBeat = songBeats.find(b => Math.abs(b.start - currentPosition) < margin);
   
+  // Check if current track position matches a beat
+  const currentBeat = songBeats.find(b => Math.abs(b.start - currentPosition) < 0.08);
   if (currentBeat) intensity = 220;
 
   const targetScale = 1 + (intensity / 255) * 1.3;
@@ -105,25 +126,30 @@ function animate() {
   } else {
     heroShape.material.color.setHex(p.main);
     camera.position.set(0, 0, 45);
-    currentPosition += 0.016; // Increment roughly by frame time
+    currentPosition += 0.016; 
   }
   renderer.render(scene, camera);
 }
 
-// --- 5. START UP ---
+// --- 7. START & UI ---
 handleAuth();
 animate();
 
-// --- 6. UI LISTENERS ---
-document.getElementById('spotify-login').onclick = redirectToSpotify;
+document.getElementById('spotify-login').onclick = () => {
+  if (!token) redirectToSpotify();
+};
+
 document.getElementById('change-shape').onclick = () => {
   currentShapeType = (currentShapeType + 1) % 2;
   heroShape.geometry = currentShapeType === 0 ? knotGeo : crystalGeo;
 };
+
 document.getElementById('change-color').onclick = () => {
   paletteIdx = (paletteIdx + 1) % palettes.length;
 };
-document.getElementById('fullscreen-btn').onclick = () => {
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-  else document.exitFullscreen();
-};
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
